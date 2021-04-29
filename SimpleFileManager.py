@@ -2,7 +2,7 @@ import json
 import os
 import threading
 from abc import ABC
-from typing import Optional, List, Union, Dict, Callable, Any, Tuple, Iterable
+from typing import Optional, List, Union, Dict, Callable, Any, Tuple
 
 import requests
 from mcdreforged.api.all import *
@@ -27,17 +27,6 @@ config = {
 	}
 }
 DEFAULT_CONFIG = config.copy()
-
-
-def get_alias_dirs() -> List[str]:
-	return list(config['directories'].keys())
-
-
-def get_real_path_from_alias(alias_dir: str) -> str:
-	ret = config['directories'].get(alias_dir)
-	if ret is None:
-		raise ValueError('Unknown alias_dir "{}". Avaliable alias_dir: {}'.format(alias_dir, get_alias_dirs()))
-	return ret['path']
 
 
 def pretty_file_size(size: int) -> str:
@@ -118,6 +107,7 @@ class FileDownloader(AsyncWorker):
 class Session:
 	ROOT = '/'
 	DIR_TO_UPPER = '..'
+	ILLEGAL_CHARS = {'/', '\\', ':', '*', '?', '"', '|', '<', '>'}
 
 	class File:
 		def __init__(self, name: str, is_dir: bool, size: int):
@@ -135,6 +125,10 @@ class Session:
 		self.current_dir = self.ROOT  # starts with /, ends without '/' unless at root
 		self.file_uploader = FileUploader(self)
 		self.file_downloader = FileDownloader(self)
+		self.alias_dirs = {}  # type: Dict[str, str]
+		for alias, info in config['directories'].items():
+			if self.server.get_permission_level(self.player) >= info['permission_level']:
+				self.alias_dirs[alias] = info['path']
 
 	def msg(self, message: Union[str, RTextBase]):
 		self.server.tell(self.player, message)
@@ -143,10 +137,10 @@ class Session:
 		tps = self.current_dir.split('/', 2)
 		if len(tps) == 3:  # self.current_dir == /a/b
 			_, alias_dir, path = tps  # '', 'a', 'b'
-			return os.path.join(get_real_path_from_alias(alias_dir), path)
+			return os.path.join(self.alias_dirs[alias_dir], path)
 		elif len(tps) == 2:  # self.current_dir == /a
 			_, alias_dir = tps  # '', 'a'
-			return get_real_path_from_alias(alias_dir)
+			return self.alias_dirs[alias_dir]
 		else:
 			return None
 
@@ -155,9 +149,9 @@ class Session:
 			current_dir = self.current_dir
 		return current_dir == self.ROOT
 
-	@staticmethod
-	def check_char(s: str, char_set: Iterable[str]) -> Optional[str]:
-		for c in char_set:
+	@classmethod
+	def check_char(cls, s: str) -> Optional[str]:
+		for c in cls.ILLEGAL_CHARS:
 			if c in s:
 				return c
 		return None
@@ -182,7 +176,7 @@ class Session:
 	def list_file(self):
 		file_list = [Session.File(self.DIR_TO_UPPER, True, 0)]  # type: List[Session.File]
 		if self.__is_at_root():
-			for alias in get_alias_dirs():
+			for alias in self.alias_dirs.keys():
 				file_list.append(Session.File(alias, True, 0))
 		else:
 			cwd = self.__get_current_real_dir()
@@ -203,11 +197,11 @@ class Session:
 		))
 
 	def change_dir(self, input_dir: str):
-		def swt(current_dir: str, dir_name: str) -> Tuple[Optional[str], Optional[str]]:
+		def jump_into(current_dir: str, dir_name: str) -> Tuple[Optional[str], Optional[str]]:
 			if self.__is_at_root(current_dir):
 				if dir_name == self.DIR_TO_UPPER:
 					return None, '不准在根目录返回上级'
-				if dir_name in get_alias_dirs():
+				if dir_name in self.alias_dirs:
 					next_dir = '/' + dir_name
 				else:
 					return None, '未知文件夹化名"§b{}§r"'.format(dir_name)
@@ -226,8 +220,8 @@ class Session:
 		cwd = None  # type: Optional[str]
 		err = None  # type: Optional[Union[str, RTextBase]]
 
-		def check_legal(*char_set) -> bool:
-			c = self.check_char(input_dir, char_set)
+		def check_legal(pth: str) -> bool:
+			c = self.check_char(pth)
 			if c is not None:
 				nonlocal err
 				err = '输入路径含非法字符"{}"'.format(c)
@@ -236,17 +230,19 @@ class Session:
 
 		# absolute path
 		if input_dir.startswith('/'):
-			if check_legal('\\'):
-				cwd = self.ROOT
-				for _dir in input_dir.split('/'):
-					if len(_dir) > 0:
-						cwd, err = swt(cwd, _dir)
+			cwd = self.ROOT
+			for _dir in input_dir.split('/'):
+				if len(_dir) > 0:
+					if check_legal(_dir):
+						cwd, err = jump_into(cwd, _dir)
 						if err is not None:
 							break
+					else:
+						break
 		# relative path, supported direct folder only
 		else:
-			if check_legal('/', '\\'):
-				cwd, err = swt(self.current_dir, input_dir)
+			if check_legal(input_dir):
+				cwd, err = jump_into(self.current_dir, input_dir)
 		if err is not None:
 			self.msg(err)
 		else:
@@ -254,7 +250,7 @@ class Session:
 			self.print_current_dir()
 
 	def __check_file_name(self, file_name: str) -> bool:
-		c = self.check_char(file_name, ('/', '\\'))
+		c = self.check_char(file_name)
 		if c is not None:
 			self.msg('输入文件名含非法字符{}'.format(c))
 			return False
@@ -461,4 +457,4 @@ def load_config(server: ServerInterface):
 		config = DEFAULT_CONFIG
 		with open(CONFIG_FILE, 'w') as file:
 			json.dump(config, file, indent=4)
-		server.logger.info('Fail to read config file, using default value ({})'.format(e))
+		server.logger.info('Fail to read config file, using default config ({})'.format(e))
