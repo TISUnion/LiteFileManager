@@ -10,10 +10,10 @@ import requests
 from mcdreforged.api.all import *
 
 PLUGIN_METADATA = {
-	'id': 'simple_file_manager',
-	'name': 'Simple File Manager',
-	'version': '0.0.2',
-	'description': '一个简易的游戏内文件管理器',
+	'id': 'lite_file_manager',
+	'name': 'Lite File Manager',
+	'version': '1.0.0',
+	'description': '一个轻量级的游戏内文件管理器',
 	'dependencies': {
 		'mcdreforged': '>=1.5.0-alpha.1'
 	}
@@ -25,7 +25,7 @@ class OpType:
 	write = 'write'
 
 
-PREFIX = '!!sfm'
+PREFIX = '!!lfm'
 LOG_FILE = 'action_record.log'
 CONFIG_FILE = 'config.json'
 config = {
@@ -259,11 +259,16 @@ class Session:
 				name_text.h(hover_msg).c(RAction.run_command, '{} cd {}'.format(PREFIX, json.dumps(fn)))
 			msg = RTextList('  ', name_text)
 			if file.is_file:
-				msg.append(' ', RText('[删除]', RColor.red).h('删除文件§a{}§r'.format(fn)).c(RAction.suggest_command, '{} delete {}'.format(PREFIX, json.dumps(fn))))
-				msg.append(' ', RText('[导出]', RColor.blue).h('导出文件§a{}§r'.format(fn)).c(RAction.suggest_command, '{} export {}'.format(PREFIX, json.dumps(fn))))
+				msg.append(' ', RText('[×]', RColor.dark_red).h('删除文件§a{}§r'.format(fn)).c(RAction.suggest_command, '{} delete {}'.format(PREFIX, json.dumps(fn))))
+				msg.append(' ', RText('[✎]', RColor.dark_purple).h('重命名文件§a{}§r'.format(fn)).c(RAction.suggest_command, '{} rename {} '.format(PREFIX, json.dumps(fn))))
+				msg.append(' ', RText('[↓]', RColor.dark_blue).h('导出文件§a{}§r'.format(fn)).c(RAction.suggest_command, '{} export {}'.format(PREFIX, json.dumps(fn))))
 			self.msg(msg)
 
-		self.msg('当前所在目录: §b{}§r'.format(self.current_dir))
+		self.msg(RTextList(
+			'当前所在目录: ',
+			RText(self.current_dir, RColor.aqua), ' ',
+			RText('[↑]', RColor.dark_blue).h('导入文件').c(RAction.suggest_command, '{} import '.format(PREFIX))
+		))
 		color_map = {False: RColor.white, True: RColor.yellow}
 		color_arrow = {False: RColor.dark_gray, True: RColor.gray}
 		sorted_file_list = list(sorted(file_list, key=lambda f: (f.is_file, f.name)))
@@ -420,7 +425,7 @@ class Session:
 		action_logger.log(self.source, 'import', 'from {} as {}'.format(url, file_name))
 		if file_name is None or self.__check_file_name(file_name):
 			if self.__is_at_root():
-				self.msg(RText('不可向根目录导入文件', RColor.red))
+				self.msg(RText('无法向根目录导入文件', RColor.red))
 				return
 			if self.file_importer.is_working():
 				self.msg('请等待上一个文件完成导入')
@@ -483,38 +488,28 @@ def import_file(source: CommandSource, url: str, file_name: Optional[str]):
 	session_action(source, lambda session: session.import_file(url, file_name))
 
 
-HELP_MESSAGES = {
-	'': ['显示帮助信息'],
-	'ls [<page>]': ['列出当前目录下的文件'],
-	'pwd': ['列出当前所在的路径'],
-	'cd <path>': [
-		'进入指定目录'
-	],
-	'delete <file_name>': [
-		'删除当前目录下的指定文件'
-	],
-	'rename <file_name> <new_name>': [
-		'重命名当前目录下的指定文件'
-	],
-	'export <file_name>': [
-		'导出当前目录下的指定文件'
-	],
-	'import <url> [<file_name>]': [
-		'从给定url下载并导入文件至当前目录，可指定保存的文件名'
-	],
-}
+HELP_MESSAGES = '''
+--------- {1} v{2} ---------
+{3}
+§7{0}§r 显示此帮助信息
+§7{0} ls §6[<page>]§r 列出当前目录下的文件。可指定显示的页数
+§7{0} pwd§r 显示当前所在的目录
+§7{0} cd §a<path>§r 进入指定目录。目录可为相对路径，或以/开头的绝对路径
+§7{0} delete §a<file_name>§r 删除当前目录下的指定文件。需要写入权限
+§7{0} rename §a<file_name> <new_name>§r 重命名当前目录下的指定文件。需要写入权限
+§7{0} export §a<file_name>§r 导出当前目录下的指定文件
+§7{0} import §9<url> §a[<file_name>]§r 从给定url下载并导入文件至当前目录，可指定保存的文件名。需要写入权限
+--- 示例 ---
+§7{0} ls §61§r
+§7{0} cd §astructures§r
+§7{0} export §amy_struct.nbt§r
+§7{0} import §9https://path.to.my/struct.nbt §anew_struct.nbt§r
+'''.format(PREFIX, PLUGIN_METADATA['name'], PLUGIN_METADATA['version'], PLUGIN_METADATA['description']).strip()
 
 
 def show_help(source: CommandSource):
-	source.reply('======= {} v{} ========'.format(PLUGIN_METADATA['name'], PLUGIN_METADATA['version']))
-	source.reply(PLUGIN_METADATA['description'])
-	for cmd, helps in HELP_MESSAGES.items():
-		source.reply(RTextList(
-			RText('{}{}{}'.format(PREFIX, ' ' if len(cmd) > 0 else '', cmd), RColor.gray),
-			' {}'.format(helps[0])
-		))
-		for extra_help in helps[1:]:
-			source.reply('    {}'.format(extra_help))
+	for line in HELP_MESSAGES.splitlines():
+		source.reply(line)
 
 
 def on_load(server: ServerInterface, old_inst):
@@ -557,7 +552,8 @@ def register_stuffs(server: ServerInterface):
 				QuotableText('file_name').then(
 					QuotableText('new_name').
 					runs(lambda src, ctx: rename_file(src, ctx['file_name'], ctx['new_name']))
-				)
+				).
+				on_error(UnknownCommand, lambda src: src.reply('请输入文件名'))
 			)
 		).
 		then(
@@ -574,7 +570,8 @@ def register_stuffs(server: ServerInterface):
 					QuotableText('file_name').
 					runs(lambda src, ctx: import_file(src, ctx['url'], ctx['file_name']))
 				)
-			)
+			).
+			on_error(UnknownCommand, lambda src: src.reply('请输入URL'))
 		)
 	)
 	server.register_help_message(PREFIX, PLUGIN_METADATA['description'], permission=config['permission_requirement'])
