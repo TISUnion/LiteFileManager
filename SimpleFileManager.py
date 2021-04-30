@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import threading
+import time
 from abc import ABC
 from typing import Optional, List, Union, Dict, Callable, Any, Tuple
 
@@ -19,16 +20,25 @@ PLUGIN_METADATA = {
 }
 
 
+class OpType:
+	read = 'read'
+	write = 'write'
+
+
 PREFIX = '!!sfm'
-CONFIG_FILE = 'SimpleFileManager.json'
+LOG_FILE = 'action_record.log'
+CONFIG_FILE = 'config.json'
 config = {
 	'permission_requirement': 2,
-	'max_import_size': 10 * 2 ** 10,  # 10MB
+	'max_import_size': 10 * 2 ** 20,  # 10MB
 	'file_per_page': 10,
 	'directories': {
 		'structures': {
 			'path': './server/world/generated/minecraft/structures',
-			'permission_requirement': 2
+			'permission': {
+				OpType.read: 2,
+				OpType.write: 3
+			}
 		}
 	}
 }
@@ -43,6 +53,25 @@ def pretty_file_size(size: int) -> str:
 			break
 		size /= 2 ** 10
 	return str(round(size, 2)) + unit
+
+
+class Logger:
+	def __init__(self, server: ServerInterface, log_file_path: str):
+		self.server = server
+		self.log_file_path = log_file_path
+		self.write_lock = threading.Lock()
+
+	def log(self, source: CommandSource, action: str, info: str):
+		with self.write_lock:
+			try:
+				with open(self.log_file_path, 'a') as log_file:
+					time_info = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+					log_file.write('[{}] {} {} {}\n'.format(time_info, source, action, info))
+			except Exception as e:
+				self.server.logger.error('Fail to write into log file "{}": {}'.format(self.log_file_path, e))
+
+
+action_logger = None  # type: Optional[Logger]
 
 
 class AsyncWorker(ABC):
@@ -163,7 +192,7 @@ class Session:
 		self.file_importer = FileImporter(self)
 		self.mounted_dirs = {}  # type: Dict[str, str]
 		for mounted, info in config['directories'].items():
-			if self.source.get_permission_level() >= info['permission_requirement']:
+			if self.source.get_permission_level() >= info['permission'][OpType.read]:
 				self.mounted_dirs[mounted] = info['path']
 
 	def get_name(self):
@@ -172,18 +201,40 @@ class Session:
 	def msg(self, message: Union[str, RTextBase]):
 		self.source.reply(message)
 
-	def __get_current_real_dir(self, current_dir: Optional[str] = None) -> Optional[str]:
-		if current_dir is None:
-			current_dir = self.current_dir
+	@staticmethod
+	def __split_current_dir(current_dir: str) -> Tuple[Optional[str], Optional[str]]:
 		tps = current_dir.split('/', 2)
 		if len(tps) == 3:  # self.current_dir == /a/b
 			_, mounted_dir, path = tps  # '', 'a', 'b'
-			return os.path.join(self.mounted_dirs[mounted_dir], path)
+			return mounted_dir, path
 		elif len(tps) == 2:  # self.current_dir == /a
 			_, mounted_dir = tps  # '', 'a'
+			if len(mounted_dir) > 0:  # at root
+				return mounted_dir, None
+		return None, None
+
+	def __get_current_real_dir(self, current_dir: Optional[str] = None) -> Optional[str]:
+		if current_dir is None:
+			current_dir = self.current_dir
+		mounted_dir, path = self.__split_current_dir(current_dir)
+		if mounted_dir is not None and path is not None:
+			return os.path.join(self.mounted_dirs[mounted_dir], path)
+		elif mounted_dir is not None:
 			return self.mounted_dirs[mounted_dir]
 		else:
 			return None
+
+	def __can_do_write(self):
+		mounted_dir, path = self.__split_current_dir(self.current_dir)
+		if mounted_dir is None:
+			return False
+		return self.source.has_permission(config['directories'][mounted_dir]['permission'][OpType.write])
+
+	def __ensure_writable(self):
+		if not self.__can_do_write():
+			self.msg(RText('无文件写入权限', RColor.red))
+			return False
+		return True
 
 	def __is_at_root(self, current_dir: Optional[str] = None):
 		if current_dir is None:
@@ -341,13 +392,16 @@ class Session:
 		def something(file_path: str):
 			os.remove(file_path)
 			self.msg('已删除§a{}§r'.format(file_name))
-		self.__do_something_with_file(file_name, something)
+		action_logger.log(self.source, 'delete', file_name)
+		if self.__ensure_writable():
+			self.__do_something_with_file(file_name, something)
 
 	def rename_file(self, file_name: str, new_name: str):
 		def something(file_path: str):
 			os.rename(file_path, os.path.join(self.__get_current_real_dir(), new_name))
 			self.msg('已将§a{}§r重命名为§a{}§r'.format(file_name, new_name))
-		if self.__check_file_name(new_name):
+		action_logger.log(self.source, 'rename', '{} -> {}'.format(file_name, new_name))
+		if self.__ensure_writable() and self.__check_file_name(new_name):
 			self.__do_something_with_file(file_name, something)
 
 	def export_file(self, file_name: str):
@@ -357,9 +411,13 @@ class Session:
 			else:
 				self.msg('正在导出§a{}§r'.format(file_name))
 				self.file_exporter.export_file(file_path)
+		action_logger.log(self.source, 'export', file_name)
 		self.__do_something_with_file(file_name, something)
 
 	def import_file(self, url: str, file_name: Optional[str]):
+		if not self.__ensure_writable():
+			return
+		action_logger.log(self.source, 'import', 'from {} as {}'.format(url, file_name))
 		if file_name is None or self.__check_file_name(file_name):
 			if self.__is_at_root():
 				self.msg(RText('不可向根目录导入文件', RColor.red))
@@ -389,7 +447,7 @@ def get_session(source: CommandSource):
 
 
 @new_thread(PLUGIN_METADATA['id'])
-def action(source: CommandSource, func: Callable[[Session], Any]):
+def session_action(source: CommandSource, func: Callable[[Session], Any]):
 	try:
 		func(get_session(source))
 	except Exception as e:
@@ -398,31 +456,31 @@ def action(source: CommandSource, func: Callable[[Session], Any]):
 
 
 def list_file(source: CommandSource, page: Optional[int]):
-	action(source, lambda session: session.list_file(page))
+	session_action(source, lambda session: session.list_file(page))
 
 
 def print_current_dir(source: CommandSource):
-	action(source, lambda session: session.print_current_dir())
+	session_action(source, lambda session: session.print_current_dir())
 
 
 def change_dir(source: CommandSource, dir_name: str):
-	action(source, lambda session: session.change_dir(dir_name))
+	session_action(source, lambda session: session.change_dir(dir_name))
 
 
 def delete_file(source: CommandSource, file_name: str):
-	action(source, lambda session: session.delete_file(file_name))
+	session_action(source, lambda session: session.delete_file(file_name))
 
 
 def rename_file(source: CommandSource, file_name: str, new_name: str):
-	action(source, lambda session: session.rename_file(file_name, new_name))
+	session_action(source, lambda session: session.rename_file(file_name, new_name))
 
 
 def export_file(source: CommandSource, file_name: str):
-	action(source, lambda session: session.export_file(file_name))
+	session_action(source, lambda session: session.export_file(file_name))
 
 
 def import_file(source: CommandSource, url: str, file_name: Optional[str]):
-	action(source, lambda session: session.import_file(url, file_name))
+	session_action(source, lambda session: session.import_file(url, file_name))
 
 
 HELP_MESSAGES = {
@@ -460,6 +518,10 @@ def show_help(source: CommandSource):
 
 
 def on_load(server: ServerInterface, old_inst):
+	global action_logger, DATA_FOLDER
+	DATA_FOLDER = server.get_data_folder()
+	action_logger = Logger(server, os.path.join(DATA_FOLDER, LOG_FILE))
+
 	load_config(server)
 	register_stuffs(server)
 
@@ -515,11 +577,11 @@ def register_stuffs(server: ServerInterface):
 			)
 		)
 	)
+	server.register_help_message(PREFIX, PLUGIN_METADATA['description'], permission=config['permission_requirement'])
 
 
 def load_config(server: ServerInterface):
-	global config, DATA_FOLDER
-	DATA_FOLDER = server.get_data_folder()
+	global config
 	needs_save = False
 	config_file_path = os.path.join(DATA_FOLDER, CONFIG_FILE)
 	try:
