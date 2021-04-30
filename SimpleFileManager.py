@@ -23,7 +23,7 @@ PREFIX = '!!sfm'
 CONFIG_FILE = 'SimpleFileManager.json'
 config = {
 	'permission_requirement': 2,
-	'max_import_size': 10 * 1078576,  # 10MB
+	'max_import_size': 10 * 2 ** 10,  # 10MB
 	'file_per_page': 10,
 	'directories': {
 		'structures': {
@@ -69,7 +69,7 @@ class AsyncWorker(ABC):
 # upload the given file to a temporary cloud storage for user to download
 class FileExporter(AsyncWorker):
 	def get_thread_name(self) -> str:
-		return 'SFM file exporter for {}'.format(self._session.player)
+		return 'SFM file exporter for {}'.format(self._session.source)
 
 	def __export(self, file_path: str):
 		fn = os.path.basename(file_path)
@@ -93,9 +93,9 @@ class FileExporter(AsyncWorker):
 				if err is not None:
 					raise err
 		except Exception as e:
-			self._session.msg('{}导出失败: '.format(fn, e))
+			self._session.msg('§a{}§r导出失败: '.format(fn, e))
 		else:
-			self._session.msg(RTextList('{}导出成功: '.format(fn), RText(url, color=RColor.blue, styles=RStyle.underlined)).c(RAction.open_url, url))
+			self._session.msg(RTextList('§a{}§r导出成功: '.format(fn), RText(url, RColor.blue, styles=RStyle.underlined)).c(RAction.open_url, url))
 
 	def export_file(self, file_path: str):
 		self._run_async(self.__export, (file_path,))
@@ -104,10 +104,10 @@ class FileExporter(AsyncWorker):
 # download a file and store it in the given path with given name from the given url
 class FileImporter(AsyncWorker):
 	def get_thread_name(self) -> str:
-		return 'SFM file importer for {}'.format(self._session.player)
+		return 'SFM file importer for {}'.format(self._session.source)
 
 	def __import(self, directory: str, url: str, file_name: str):
-		temp_file_path = os.path.join(DATA_FOLDER, self._session.player + '#' + file_name)
+		temp_file_path = os.path.join(DATA_FOLDER, self._session.get_name() + '#' + file_name)
 		target_file_path = os.path.join(directory, file_name)
 		try:
 			response = requests.get(url, stream=True)
@@ -122,13 +122,13 @@ class FileImporter(AsyncWorker):
 					if chunk:
 						file_handler.write(chunk)
 		except Exception as e:
-			self._session.msg('{}导入失败: '.format(file_name, e))
+			self._session.msg('§a{}§r导入失败: {}'.format(file_name, e))
 		else:
 			if oversize:
-				self._session.msg('{}过大，无法导入'.format(file_name))
+				self._session.msg('§a{}§r超过文件大小限制{}，无法导入'.format(file_name, pretty_file_size(config['max_import_size'])))
 				os.remove(temp_file_path)
 			else:
-				self._session.msg('{}导入成功'.format(file_name))
+				self._session.msg('§a{}§r导入成功，文件大小{}'.format(file_name, pretty_file_size(total_size)))
 				shutil.move(temp_file_path, target_file_path)
 
 	def import_file(self, directory: str, url: str, file_name: Optional[str]):
@@ -136,6 +136,7 @@ class FileImporter(AsyncWorker):
 
 
 class Session:
+	ID_COUNTER = 0
 	ROOT = '/'
 	DIR_TO_UPPER = '..'
 	ILLEGAL_CHARS = {'/', '\\', ':', '*', '?', '"', '|', '<', '>'}
@@ -150,28 +151,37 @@ class Session:
 		def is_file(self) -> bool:
 			return not self.is_dir
 
-	def __init__(self, server: ServerInterface, player: str):
-		self.server = server
-		self.player = player
+	DIR_TO_UPPER_FILE = File(DIR_TO_UPPER, True, 0)
+
+	def __init__(self, source: CommandSource):
+		self.__id = Session.ID_COUNTER
+		Session.ID_COUNTER += 1
+		self.source = source
+		self.server = source.get_server()
 		self.current_dir = self.ROOT  # starts with /, ends without '/' unless at root
 		self.file_exporter = FileExporter(self)
 		self.file_importer = FileImporter(self)
-		self.alias_dirs = {}  # type: Dict[str, str]
-		for alias, info in config['directories'].items():
-			if self.server.get_permission_level(self.player) >= info['permission_requirement']:
-				self.alias_dirs[alias] = info['path']
+		self.mounted_dirs = {}  # type: Dict[str, str]
+		for mounted, info in config['directories'].items():
+			if self.source.get_permission_level() >= info['permission_requirement']:
+				self.mounted_dirs[mounted] = info['path']
+
+	def get_name(self):
+		return 'Session{}'.format(self.__id)
 
 	def msg(self, message: Union[str, RTextBase]):
-		self.server.tell(self.player, message)
+		self.source.reply(message)
 
-	def __get_current_real_dir(self) -> Optional[str]:
-		tps = self.current_dir.split('/', 2)
+	def __get_current_real_dir(self, current_dir: Optional[str] = None) -> Optional[str]:
+		if current_dir is None:
+			current_dir = self.current_dir
+		tps = current_dir.split('/', 2)
 		if len(tps) == 3:  # self.current_dir == /a/b
-			_, alias_dir, path = tps  # '', 'a', 'b'
-			return os.path.join(self.alias_dirs[alias_dir], path)
+			_, mounted_dir, path = tps  # '', 'a', 'b'
+			return os.path.join(self.mounted_dirs[mounted_dir], path)
 		elif len(tps) == 2:  # self.current_dir == /a
-			_, alias_dir = tps  # '', 'a'
-			return self.alias_dirs[alias_dir]
+			_, mounted_dir = tps  # '', 'a'
+			return self.mounted_dirs[mounted_dir]
 		else:
 			return None
 
@@ -190,18 +200,19 @@ class Session:
 	def __display_file_list(self, file_list: List[File], page: Optional[int]):
 		def display(file: Session.File):
 			fn = file.name
-			name_text = RText(fn if file.is_file else fn + '/', color=color_map[file.is_dir])
+			name_text = RText(fn if file.is_file else fn + '/', color_map[file.is_dir])
 			if file.is_file:
 				name_text.h('文件大小: {}'.format(pretty_file_size(file.size)))
 			else:
-				name_text.h('点击以进入目录§e{}§r'.format(fn)).c(RAction.run_command, '{} cd {}'.format(PREFIX, json.dumps(fn)))
+				hover_msg = '点击以进入目录§e{}§r'.format(fn) if file != self.DIR_TO_UPPER_FILE else '点击返回上一级目录'
+				name_text.h(hover_msg).c(RAction.run_command, '{} cd {}'.format(PREFIX, json.dumps(fn)))
 			msg = RTextList('  ', name_text)
 			if file.is_file:
-				msg.append(' ', RText('[删除]', color=RColor.red).h('删除文件{}'.format(fn)).c(RAction.suggest_command, '{} delete {}'.format(PREFIX, json.dumps(fn))))
-				msg.append(' ', RText('[导出]', color=RColor.blue).h('导出文件{}'.format(fn)).c(RAction.suggest_command, '{} export {}'.format(PREFIX, json.dumps(fn))))
+				msg.append(' ', RText('[删除]', RColor.red).h('删除文件§a{}§r'.format(fn)).c(RAction.suggest_command, '{} delete {}'.format(PREFIX, json.dumps(fn))))
+				msg.append(' ', RText('[导出]', RColor.blue).h('导出文件§a{}§r'.format(fn)).c(RAction.suggest_command, '{} export {}'.format(PREFIX, json.dumps(fn))))
 			self.msg(msg)
 
-		self.msg('当前路径: §b{}§r'.format(self.current_dir))
+		self.msg('当前所在目录: §b{}§r'.format(self.current_dir))
 		color_map = {False: RColor.white, True: RColor.yellow}
 		color_arrow = {False: RColor.dark_gray, True: RColor.gray}
 		sorted_file_list = list(sorted(file_list, key=lambda f: (f.is_file, f.name)))
@@ -215,10 +226,10 @@ class Session:
 
 			has_prev = 0 < left < len(sorted_file_list)
 			has_next = 0 < right < len(sorted_file_list)
-			prev_page = RText('<-', color=color_arrow[has_prev])
+			prev_page = RText('<-', color_arrow[has_prev])
 			if has_prev:
 				prev_page.c(RAction.run_command, '{} ls {}'.format(PREFIX, page - 1)).h('点击显示上一页')
-			next_page = RText('->', color=color_arrow[has_next])
+			next_page = RText('->', color_arrow[has_next])
 			if has_next:
 				next_page.c(RAction.run_command, '{} ls {}'.format(PREFIX, page + 1)).h('点击显示下一页')
 
@@ -232,13 +243,13 @@ class Session:
 				display(f)
 
 		file_amount = len(list(filter(lambda x: x.is_file, file_list)))
-		self.msg('共有§6{}§r个文件, §6{}§r个文件夹'.format(file_amount, len(file_list) - file_amount))
+		self.msg('共有§6{}§r个文件, §6{}§r个文件夹'.format(file_amount, len(file_list) - file_amount - 1))  # -1 for ignoring ..
 
 	def list_file(self, page: Optional[int]):
-		file_list = [Session.File(self.DIR_TO_UPPER, True, 0)]  # type: List[Session.File]
+		file_list = [self.DIR_TO_UPPER_FILE]  # type: List[Session.File]
 		if self.__is_at_root():
-			for alias in self.alias_dirs.keys():
-				file_list.append(Session.File(alias, True, 0))
+			for mounted in self.mounted_dirs.keys():
+				file_list.append(Session.File(mounted, True, 0))
 		else:
 			cwd = self.__get_current_real_dir()
 			try:
@@ -251,7 +262,7 @@ class Session:
 		self.__display_file_list(file_list, page)
 
 	def print_current_dir(self):
-		self.msg(RTextList('当前路径为: ', RText(self.current_dir, color=RColor.aqua)))
+		self.msg(RTextList('当前所在目录: ', RText(self.current_dir, RColor.aqua)))
 		self.msg(RTextList(
 			RText('§7[§r查看当前路径文件§7]§r').c(RAction.run_command, '{} ls'.format(PREFIX)), ' ',
 			RText('§7[§r返回根目录§7]§r').c(RAction.run_command, '{} cd {}'.format(PREFIX, self.ROOT))
@@ -262,20 +273,20 @@ class Session:
 			if self.__is_at_root(current_dir):
 				if dir_name == self.DIR_TO_UPPER:
 					return None, '不准在根目录返回上级'
-				if dir_name in self.alias_dirs:
+				if dir_name in self.mounted_dirs:
 					next_dir = '/' + dir_name
 				else:
-					return None, '未知文件夹化名"§b{}§r"'.format(dir_name)
+					return None, '未知挂载文件夹§e{}§r'.format(dir_name)
 			else:
 				if dir_name == self.DIR_TO_UPPER:
 					next_dir = current_dir.rsplit('/', 1)[0]
 					if len(next_dir) == 0:
 						next_dir = self.ROOT
 				else:
-					if os.path.isdir(os.path.join(self.__get_current_real_dir(), dir_name)):
+					if os.path.isdir(os.path.join(self.__get_current_real_dir(current_dir), dir_name)):
 						next_dir = current_dir + '/' + dir_name
 					else:
-						return None, '未知文件夹'
+						return None, '未知文件夹§e{}§r'.format(dir_name)
 			return next_dir, None
 
 		err = None  # type: Optional[Union[str, RTextBase]]
@@ -290,14 +301,14 @@ class Session:
 			if len(_dir) > 0:
 				c = self.check_char(_dir)
 				if c is not None:
-					err = '输入路径含非法字符"{}"'.format(c)
+					err = '输入路径含非法字符§c{}§r'.format(c)
 					break
 				else:
 					cwd, err = jump_into(cwd, _dir)
 					if err is not None:
 						break
 		if err is not None:
-			self.msg(err)
+			self.msg(RText(err, RColor.red))
 		else:
 			self.current_dir = cwd  # type: str
 			self.list_file(1)
@@ -305,7 +316,7 @@ class Session:
 	def __check_file_name(self, file_name: str) -> bool:
 		c = self.check_char(file_name)
 		if c is not None:
-			self.msg('输入文件名含非法字符{}'.format(c))
+			self.msg('§c输入文件名含非法字符{}§r'.format(c))
 			return False
 		return True
 
@@ -318,24 +329,24 @@ class Session:
 					try:
 						consumer(file_path)
 					except Exception as e:
-						self.msg(RText('在操作文件时出现错误: {}'.format(e), color=RColor.red))
+						self.msg(RText('在操作文件时出现错误: {}'.format(e), RColor.red))
 				else:
 					file_not_found = True
 			else:
 				file_not_found = True
 			if file_not_found:
-				self.msg('文件{}不存在'.format(file_name))
+				self.msg('文件§a{}§r不存在'.format(file_name))
 
 	def delete_file(self, file_name: str):
 		def something(file_path: str):
 			os.remove(file_path)
-			self.msg('已删除{}'.format(file_name))
+			self.msg('已删除§a{}§r'.format(file_name))
 		self.__do_something_with_file(file_name, something)
 
 	def rename_file(self, file_name: str, new_name: str):
 		def something(file_path: str):
 			os.rename(file_path, os.path.join(self.__get_current_real_dir(), new_name))
-			self.msg('已将{}重命名为{}'.format(file_name, new_name))
+			self.msg('已将§a{}§r重命名为§a{}§r'.format(file_name, new_name))
 		if self.__check_file_name(new_name):
 			self.__do_something_with_file(file_name, something)
 
@@ -344,22 +355,22 @@ class Session:
 			if self.file_exporter.is_working():
 				self.msg('请等待上一个文件完成导出')
 			else:
-				self.msg('正在导出{}'.format(file_name))
+				self.msg('正在导出§a{}§r'.format(file_name))
 				self.file_exporter.export_file(file_path)
 		self.__do_something_with_file(file_name, something)
 
 	def import_file(self, url: str, file_name: Optional[str]):
 		if file_name is None or self.__check_file_name(file_name):
 			if self.__is_at_root():
-				self.msg('不可向根目录导入文件')
+				self.msg(RText('不可向根目录导入文件', RColor.red))
 				return
 			if self.file_importer.is_working():
 				self.msg('请等待上一个文件完成导入')
 			else:
 				if file_name is None:
 					file_name = os.path.basename(url)
-				self.msg('正在由{}导入文件中'.format(url))
-				self.msg('目标文件名: {}'.format(file_name))
+				self.msg('正在由§9{}§r导入文件中'.format(url))
+				self.msg('目标文件名: §a{}§r'.format(file_name))
 				_dir = self.__get_current_real_dir()
 				if os.path.exists(os.path.join(_dir, file_name)):
 					self.msg('目标文件已存在')
@@ -370,22 +381,20 @@ class Session:
 sessions = {}  # type: Dict[str, Session]
 
 
-def get_session(source: PlayerCommandSource):
-	if source.player not in sessions:
-		sessions[source.player] = Session(source.get_server(), source.player)
-	return sessions[source.player]
+def get_session(source: CommandSource):
+	key = source.player if isinstance(source, PlayerCommandSource) else '_#{}#_'.format(type(source))
+	if key not in sessions:
+		sessions[key] = Session(source)
+	return sessions[key]
 
 
 @new_thread(PLUGIN_METADATA['id'])
 def action(source: CommandSource, func: Callable[[Session], Any]):
-	if isinstance(source, PlayerCommandSource):
-		try:
-			func(get_session(source))
-		except Exception as e:
-			source.reply(RText('ERROR', color=RColor.red).h(str(e)))
-			source.get_server().logger.exception('qwq')
-	else:
-		source.reply('不支持非玩家输入')
+	try:
+		func(get_session(source))
+	except Exception as e:
+		source.reply(RText('ERROR', RColor.red).h(str(e)))
+		source.get_server().logger.exception('qwq')
 
 
 def list_file(source: CommandSource, page: Optional[int]):
@@ -443,7 +452,7 @@ def show_help(source: CommandSource):
 	source.reply(PLUGIN_METADATA['description'])
 	for cmd, helps in HELP_MESSAGES.items():
 		source.reply(RTextList(
-			RText('{}{}{}'.format(PREFIX, ' ' if len(cmd) > 0 else '', cmd), color=RColor.gray),
+			RText('{}{}{}'.format(PREFIX, ' ' if len(cmd) > 0 else '', cmd), RColor.gray),
 			' {}'.format(helps[0])
 		))
 		for extra_help in helps[1:]:
