@@ -267,11 +267,12 @@ class Session:
 		self.msg(RTextList(
 			'当前所在目录: ',
 			RText(self.current_dir, RColor.aqua), ' ',
+			RText('[>]', RColor.dark_purple).h('搜索文件').c(RAction.suggest_command, '{} search '.format(PREFIX)), ' ',
 			RText('[↑]', RColor.dark_blue).h('导入文件').c(RAction.suggest_command, '{} import '.format(PREFIX))
 		))
 		color_map = {False: RColor.white, True: RColor.yellow}
 		color_arrow = {False: RColor.dark_gray, True: RColor.gray}
-		sorted_file_list = list(sorted(file_list, key=lambda f: (f.is_file, f.name)))
+		sorted_file_list = list(sorted(file_list, key=lambda x: (x.is_file, x.name)))
 
 		if page is not None:
 			file_per_page = config['file_per_page']
@@ -299,9 +300,9 @@ class Session:
 				display(f)
 
 		file_amount = len(list(filter(lambda x: x.is_file, file_list)))
-		self.msg('共有§6{}§r个文件, §6{}§r个文件夹'.format(file_amount, len(file_list) - file_amount - 1))  # -1 for ignoring ..
+		self.msg('共有§6{}§r个文件, §6{}§r个文件夹'.format(file_amount, len(file_list) - file_amount - (1 if self.DIR_TO_UPPER_FILE in file_list else 0)))
 
-	def list_file(self, page: Optional[int]):
+	def list_file(self, keyword: Optional[str], page: Optional[int]):
 		file_list = [self.DIR_TO_UPPER_FILE]  # type: List[Session.File]
 		if self.__is_at_root():
 			for mounted in self.mounted_dirs.keys():
@@ -315,6 +316,8 @@ class Session:
 			for name in ls_result:
 				full_path = os.path.join(cwd, name)
 				file_list.append(Session.File(name, os.path.isdir(full_path), os.path.getsize(full_path)))
+		if keyword is not None:
+			file_list = list(filter(lambda f: keyword in f.name, file_list))
 		self.__display_file_list(file_list, page)
 
 	def print_current_dir(self):
@@ -324,50 +327,51 @@ class Session:
 			RText('§7[§r返回根目录§7]§r').c(RAction.run_command, '{} cd {}'.format(PREFIX, self.ROOT))
 		))
 
-	def change_dir(self, input_dir: str):
-		def jump_into(current_dir: str, dir_name: str) -> Tuple[Optional[str], Optional[str]]:
+	def change_dir(self, input_path: str):
+		def jump_into(current_dir: str, path: str) -> Tuple[Optional[str], Optional[str]]:
 			if self.__is_at_root(current_dir):
-				if dir_name == self.DIR_TO_UPPER:
+				if path == self.DIR_TO_UPPER:
 					return None, '不准在根目录返回上级'
-				if dir_name in self.mounted_dirs:
-					next_dir = '/' + dir_name
+				if path in self.mounted_dirs:
+					next_dir = '/' + path
 				else:
-					return None, '未知挂载文件夹§e{}§r'.format(dir_name)
+					return None, '未知挂载文件夹§e{}§r'.format(path)
 			else:
-				if dir_name == self.DIR_TO_UPPER:
+				if path == self.DIR_TO_UPPER:
 					next_dir = current_dir.rsplit('/', 1)[0]
 					if len(next_dir) == 0:
 						next_dir = self.ROOT
 				else:
-					if os.path.isdir(os.path.join(self.__get_current_real_dir(current_dir), dir_name)):
-						next_dir = current_dir + '/' + dir_name
+					if os.path.isdir(os.path.join(self.__get_current_real_dir(current_dir), path)):
+						next_dir = current_dir + '/' + path
 					else:
-						return None, '未知文件夹§e{}§r'.format(dir_name)
+						return None, '未知文件夹§e{}§r'.format(path)
 			return next_dir, None
 
+		self.msg('正在进入路径§e{}§r'.format(input_path))
 		err = None  # type: Optional[Union[str, RTextBase]]
 
 		# absolute path
-		if input_dir.startswith('/'):
+		if input_path.startswith('/'):
 			cwd = self.ROOT
 		# relative path
 		else:
 			cwd = self.current_dir
-		for _dir in input_dir.split('/'):
-			if len(_dir) > 0:
-				c = self.check_char(_dir)
+		for sub_path in input_path.split('/'):
+			if len(sub_path) > 0:
+				c = self.check_char(sub_path)
 				if c is not None:
 					err = '输入路径含非法字符§c{}§r'.format(c)
 					break
 				else:
-					cwd, err = jump_into(cwd, _dir)
+					cwd, err = jump_into(cwd, sub_path)
 					if err is not None:
 						break
 		if err is not None:
 			self.msg(RText(err, RColor.red))
 		else:
 			self.current_dir = cwd  # type: str
-			self.list_file(1)
+			self.list_file(None, 1)
 
 	def __check_file_name(self, file_name: str) -> bool:
 		c = self.check_char(file_name)
@@ -461,7 +465,11 @@ def session_action(source: CommandSource, func: Callable[[Session], Any]):
 
 
 def list_file(source: CommandSource, page: Optional[int]):
-	session_action(source, lambda session: session.list_file(page))
+	session_action(source, lambda session: session.list_file(None, page))
+
+
+def search_file(source: CommandSource, keyword: str, page: Optional[int]):
+	session_action(source, lambda session: session.list_file(keyword, page))
 
 
 def print_current_dir(source: CommandSource):
@@ -492,7 +500,8 @@ HELP_MESSAGES = '''
 --------- {1} v{2} ---------
 {3}
 §7{0}§r 显示此帮助信息
-§7{0} ls §6[<page>]§r 列出当前目录下的文件。可指定显示的页数
+§7{0} ls §6[<page>]§r 列出当前目录下的所有文件。可指定显示的页数
+§7{0} search §a<keyword>§r §6[<page>]§r 列出当前目录下包含§a<keyword>§r的文件。可指定显示的页数
 §7{0} pwd§r 显示当前所在的目录
 §7{0} cd §a<path>§r 进入指定目录。目录可为相对路径，或以/开头的绝对路径
 §7{0} delete §a<file_name>§r 删除当前目录下的指定文件。需要写入权限
@@ -526,6 +535,7 @@ def register_stuffs(server: ServerInterface):
 		Literal(PREFIX).
 		requires(lambda src: src.has_permission(config['permission_requirement']), lambda: '权限不足').
 		runs(show_help).
+		on_error(UnknownArgument, lambda src: src.reply(RText('未知指令，点击查看帮助').h(PREFIX).c(RAction.run_command, PREFIX))).
 		then(
 			Literal('ls').
 			runs(lambda src: list_file(src, None)).
@@ -533,6 +543,18 @@ def register_stuffs(server: ServerInterface):
 				Integer('page').
 				runs(lambda src, ctx: list_file(src, ctx['page']))
 			)
+		).
+		then(
+			Literal('search').
+			then(
+				QuotableText('keyword').
+				runs(lambda src, ctx: search_file(src, ctx['keyword'], None)).
+				then(
+					Integer('page').
+					runs(lambda src, ctx: search_file(src, ctx['keyword'], ctx['page']))
+				)
+			).
+			on_error(UnknownCommand, lambda src: src.reply('请输入关键字'))
 		).
 		then(Literal('pwd').runs(print_current_dir)).
 		then(

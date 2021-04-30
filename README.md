@@ -1,7 +1,7 @@
 Lite File Manager
 -----------
 
-一个轻量级的游戏内文件管理器，提供目录浏览、文件上传下载功能
+一个轻量级的游戏内文件管理器，提供目录浏览、文件导入导出功能。其中文件导出借助了文件临时中转站 [uguu.se](https://uguu.se/) 或 [tmp.ninja](https://tmp.ninja/) 实现
 
 ![tree](assets/tree.png)
 
@@ -41,6 +41,7 @@ Lite File Manager
 
 - `!!lfm` 显示此帮助信息
 - `!!lfm ls [<page>]` 列出当前目录下的文件。可指定显示的页数
+- `!!lfm search <keyword> [<page>]` 列出当前目录下包含 `<keyword>` 的文件。可指定显示的页数
 - `!!lfm pwd` 显示当前所在的目录
 - `!!lfm cd <path>` 进入指定目录。目录可为相对路径，或以/开头的绝对路径
 - `!!lfm delete <file_name>` 删除当前目录下的指定文件。需要写入权限
