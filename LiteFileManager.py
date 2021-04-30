@@ -15,7 +15,7 @@ PLUGIN_METADATA = {
 	'version': '1.0.0',
 	'description': '一个轻量级的游戏内文件管理器',
 	'dependencies': {
-		'mcdreforged': '>=1.5.0-alpha.1'
+		'mcdreforged': '>=1.5.0'
 	}
 }
 
