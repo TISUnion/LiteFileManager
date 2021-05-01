@@ -5,14 +5,14 @@ import threading
 import time
 from abc import ABC
 from typing import Optional, List, Union, Dict, Callable, Any, Tuple
-import re
+
 import requests
 from mcdreforged.api.all import *
 
 PLUGIN_METADATA = {
 	'id': 'lite_file_manager',
 	'name': 'Lite File Manager',
-	'version': '1.0.2',
+	'version': '1.0.1',
 	'description': '一个轻量级的游戏内文件管理器',
 	'author': 'Fallen_Breath',
 	'link': 'https://github.com/MCDReforged/LiteFileManager',
@@ -499,10 +499,9 @@ def import_file(source: CommandSource, url: str, file_name: Optional[str]):
 
 
 HELP_MESSAGES = '''
---------- §e{1} §rv§8{2}§r ---------
+--------- {1} v{2} ---------
 {3}
 §7{0}§r 显示此帮助信息
-§7{0} reload§r 重新加载配置文件
 §7{0} ls §6[<page>]§r 列出当前目录下的所有文件。可指定显示的页数
 §7{0} search §a<keyword>§r §6[<page>]§r 列出当前目录下包含§a<keyword>§r的文件。可指定显示的页数
 §7{0} pwd§r 显示当前所在的目录
@@ -512,23 +511,16 @@ HELP_MESSAGES = '''
 §7{0} export §a<file_name>§r 导出当前目录下的指定文件
 §7{0} import §9<url> §a[<file_name>]§r 从给定url下载并导入文件至当前目录，可指定保存的文件名。需要写入权限
 --- 示例 ---
-§e{0} ls §61§r
-§e{0} cd §astructures§r
-§e{0} export §amy_struct.nbt§r
-§e{0} import §9https://path.to.my/struct.nbt §anew_struct.nbt§r
-'''.format(PREFIX, PLUGIN_METADATA['name'], PLUGIN_METADATA['version'], PLUGIN_METADATA['description']).strip().splitlines(True)
+§7{0} ls §61§r
+§7{0} cd §astructures§r
+§7{0} export §amy_struct.nbt§r
+§7{0} import §9https://path.to.my/struct.nbt §anew_struct.nbt§r
+'''.format(PREFIX, PLUGIN_METADATA['name'], PLUGIN_METADATA['version'], PLUGIN_METADATA['description']).strip()
 
 
 def show_help(source: CommandSource):
-	help_msg_rtext = RTextList()
-	for line in HELP_MESSAGES:
-		pattern = r'(?<=§7)' + PREFIX + r'[\S ]*?(?=§)'
-		result = re.search(pattern, line)
-		if result is not None:
-			help_msg_rtext.append(RText(line).c(RAction.suggest_command, result.group()).h('点击以填入 §7{}§r'.format(result.group())))
-		else:
-			help_msg_rtext.append(line)
-	source.reply(help_msg_rtext)
+	for line in HELP_MESSAGES.splitlines():
+		source.reply(line)
 
 
 def on_load(server: ServerInterface, old_inst):
@@ -539,14 +531,6 @@ def on_load(server: ServerInterface, old_inst):
 	load_config(server)
 	register_stuffs(server)
 
-def reload_config(source: CommandSource):
-	try:
-		load_config(source.get_server())
-	except Exception as e:
-		source.reply('配置文件重载§c失败§r')
-		source.get_server().logger.error('Config reload failed ({})'.format(e))
-	else:
-		source.reply('配置文件重载§a成功§r')
 
 def register_stuffs(server: ServerInterface):
 	server.register_command(
@@ -612,8 +596,7 @@ def register_stuffs(server: ServerInterface):
 				)
 			).
 			on_error(UnknownCommand, lambda src: src.reply('请输入URL'))
-		).
-		then(Literal('reload').runs(reload_config))
+		)
 	)
 	server.register_help_message(PREFIX, PLUGIN_METADATA['description'], permission=config['permission_requirement'])
 
