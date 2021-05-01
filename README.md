@@ -40,6 +40,7 @@ Lite File Manager
 ## 指令
 
 - `!!lfm` 显示此帮助信息
+- `!!lfm reload` 重新加载插件配置文件 
 - `!!lfm ls [<page>]` 列出当前目录下的文件。可指定显示的页数
 - `!!lfm search <keyword> [<page>]` 列出当前目录下包含 `<keyword>` 的文件。可指定显示的页数
 - `!!lfm pwd` 显示当前所在的目录
