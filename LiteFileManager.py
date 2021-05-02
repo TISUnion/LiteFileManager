@@ -1,11 +1,11 @@
 import json
 import os
+import re
 import shutil
 import threading
 import time
 from abc import ABC
-from typing import Optional, List, Union, Dict, Callable, Any, Tuple
-import re
+from typing import Optional, List, Union, Dict, Callable, Any, Tuple, IO
 
 import requests
 from mcdreforged.api.all import *
@@ -77,6 +77,52 @@ class Logger:
 action_logger = None  # type: Optional[Logger]
 
 
+class AbstractFileUploader(ABC):
+	def upload(self, server: ServerInterface, file: IO, file_name: str) -> str:
+		raise NotImplementedError()
+
+
+class FileUploaderTransferSh(AbstractFileUploader):
+	URL = 'https://transfer.sh/'
+
+	def upload(self, server: ServerInterface, file: IO, file_name: str) -> str:
+		try:
+			response = requests.post(self.URL, files={file_name: file})
+			return response.text.strip().replace('transfer.sh/', 'transfer.sh/get/')
+		except Exception as e:
+			server.logger.warning('Uploading to "{}" failed: {}'.format(self.URL, e))
+			raise
+
+
+class FileUploaderUguu(AbstractFileUploader):
+	def __init__(self, url: str):
+		self.__url = url
+
+	def upload(self, server: ServerInterface, file: IO, file_name: str) -> str:
+		try:
+			response = requests.post(self.__url, files={'files[]': (file_name, file)})
+			js = response.json()
+		except Exception as e:
+			server.logger.warning('Uploading to "{}" failed: {}'.format(self.__url, e))
+			raise
+		try:
+			# {'success': True, 'files': [{'hash': '1eba7caf09a39110ad2f542e3ed8700d1a69c6d3', 'name': 'LICENSE', 'url': 'https://a.tmp.ninja/PPgoeBqb', 'size': 35823}]}
+			if js['success']:
+				return js['files'][0]['url']
+			else:
+				raise Exception(js['description'])
+		except KeyError as e:
+			server.logger.warning('Unknown respond json: {} ({})'.format(js, e))
+			raise
+
+
+FILE_UPLOADER_LIST = [
+	FileUploaderTransferSh(),
+	FileUploaderUguu('https://tmp.ninja/upload.php'),
+	FileUploaderUguu('https://uguu.se/upload.php'),
+]  # type: List[AbstractFileUploader]
+
+
 class AsyncWorker(ABC):
 	def __init__(self, session: 'Session'):
 		self._session = session
@@ -104,30 +150,26 @@ class FileExporter(AsyncWorker):
 		return 'SFM file exporter for {}'.format(self._session.source)
 
 	def __export(self, file_path: str):
-		fn = os.path.basename(file_path)
+		file_name = os.path.basename(file_path)
 		try:
 			with open(file_path, 'rb') as file:
 				err = None
-				for url in ('https://uguu.se/upload.php', 'https://tmp.ninja/upload.php'):
+				for uploader in FILE_UPLOADER_LIST:
 					try:
-						response = requests.post(url, files={'files[]': (os.path.basename(file_path), file)})
-						js = response.json()
-						# {'success': True, 'files': [{'hash': '1eba7caf09a39110ad2f542e3ed8700d1a69c6d3', 'name': 'LICENSE', 'url': 'https://a.tmp.ninja/PPgoeBqb', 'size': 35823}]}
-						if js['success']:
-							url = js['files'][0]['url']
-							err = None
-							break
-						else:
-							raise Exception(js['description'])
+						url = uploader.upload(self._session.server, file, file_name)
+						break
 					except Exception as e:
-						self._session.server.logger.info('Uploading to "{}" failed: {}'.format(url, e))
 						err = e
-				if err is not None:
+				else:
 					raise err
 		except Exception as e:
-			self._session.msg('§a{}§r导出失败: '.format(fn, e))
+			self._session.msg('§a{}§r导出失败: {}'.format(file_name, e))
 		else:
-			self._session.msg(RTextList('§a{}§r导出成功: '.format(fn), RText(url, RColor.blue, styles=RStyle.underlined)).c(RAction.open_url, url))
+			self._session.server.logger.info('File {} ({}) has been uploaded to {}'.format(file_name, file_path, url))
+			self._session.msg(RTextList(
+				RText('§a{}§r导出成功: '.format(file_name)).h('点击以将链接填入聊天栏').c(RAction.suggest_command, url),
+				RText(url, RColor.blue, styles=RStyle.underlined).h('点击以打开链接').c(RAction.open_url, url)
+			))
 
 	def export_file(self, file_path: str):
 		self._run_async(self.__export, (file_path,))
@@ -534,16 +576,18 @@ def show_help(source: CommandSource):
 				symbol += 1
 	source.reply(help_msg_rtext)
 
+
 def reload_config(source: CommandSource):
 	try:
 		global sessions
+		sessions.clear()
 		load_config(source.get_server())
-		sessions = {} 
 	except Exception as e:
 		source.reply('配置文件重载§c失败§r')
 		source.get_server().logger.error('Config reload failed ({})'.format(e))
 	else:
 		source.reply('配置文件重载§a成功§r')
+
 
 def on_load(server: ServerInterface, old_inst):
 	global action_logger, DATA_FOLDER

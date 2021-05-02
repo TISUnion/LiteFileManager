@@ -1,9 +1,11 @@
 Lite File Manager
 -----------
 
-一个轻量级的游戏内文件管理器，提供目录浏览、文件导入导出功能。其中文件导出借助了文件临时中转站 [uguu.se](https://uguu.se/) 或 [tmp.ninja](https://tmp.ninja/) 实现
+一个轻量级的游戏内文件管理器，提供目录浏览、文件导入导出功能
 
 ![tree](assets/tree.png)
+
+不同版本的插件下载见相应的 tag
 
 ## 需求
 
@@ -49,6 +51,14 @@ Lite File Manager
 - `!!lfm rename <file_name> <new_name>` 重命名当前目录下的指定文件。需要写入权限
 - `!!lfm export <file_name>` 导出当前目录下的指定文件
 - `!!lfm import <url> [<file_name>]` 从给定 url 下载并导入文件至当前目录，可指定保存的文件名。需要写入权限
+
+关于文件导出功能，Lite File Manager 会依次尝试将文件上传至以下的文件临时中转站：
+
+- [transfer.sh](https://transfer.sh/)
+- [uguu.se](https://uguu.se/)
+- [tmp.ninja](https://tmp.ninja/) 
+
+关于文件导入功能，参数 url 需要为一个文件的下载直链
 
 ## 日志
 
