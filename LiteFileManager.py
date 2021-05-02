@@ -5,6 +5,7 @@ import threading
 import time
 from abc import ABC
 from typing import Optional, List, Union, Dict, Callable, Any, Tuple
+import re
 
 import requests
 from mcdreforged.api.all import *
@@ -12,7 +13,7 @@ from mcdreforged.api.all import *
 PLUGIN_METADATA = {
 	'id': 'lite_file_manager',
 	'name': 'Lite File Manager',
-	'version': '1.0.1',
+	'version': '1.1.0',
 	'description': '一个轻量级的游戏内文件管理器',
 	'author': 'Fallen_Breath',
 	'link': 'https://github.com/MCDReforged/LiteFileManager',
@@ -502,6 +503,7 @@ HELP_MESSAGES = '''
 --------- {1} v{2} ---------
 {3}
 §7{0}§r 显示此帮助信息
+§7{0} reload§r 显示此帮助信息
 §7{0} ls §6[<page>]§r 列出当前目录下的所有文件。可指定显示的页数
 §7{0} search §a<keyword>§r §6[<page>]§r 列出当前目录下包含§a<keyword>§r的文件。可指定显示的页数
 §7{0} pwd§r 显示当前所在的目录
@@ -519,9 +521,29 @@ HELP_MESSAGES = '''
 
 
 def show_help(source: CommandSource):
-	for line in HELP_MESSAGES.splitlines():
-		source.reply(line)
+	help_msg_rtext = RTextList()
+	symbol = 0
+	for line in HELP_MESSAGES.splitlines(True):
+		result = re.search(r'(?<=§7)' + PREFIX + r'[\S ]*?(?=§)', line)
+		if result is not None and symbol != 2:
+			help_msg_rtext.append(RText(line).c(RAction.suggest_command, result.group()).h('点击以填入 §7{}§r'.format(result.group())))
+			symbol = 1
+		else:
+			help_msg_rtext.append(line)
+			if symbol == 1:
+				symbol += 1
+	source.reply(help_msg_rtext)
 
+def reload_config(source: CommandSource):
+	try:
+		global sessions
+		load_config(source.get_server())
+		sessions = {} 
+	except Exception as e:
+		source.reply('配置文件重载§c失败§r')
+		source.get_server().logger.error('Config reload failed ({})'.format(e))
+	else:
+		source.reply('配置文件重载§a成功§r')
 
 def on_load(server: ServerInterface, old_inst):
 	global action_logger, DATA_FOLDER
@@ -596,7 +618,8 @@ def register_stuffs(server: ServerInterface):
 				)
 			).
 			on_error(UnknownCommand, lambda src: src.reply('请输入URL'))
-		)
+		).
+		then(Literal('reload').runs(reload_config))
 	)
 	server.register_help_message(PREFIX, PLUGIN_METADATA['description'], permission=config['permission_requirement'])
 
