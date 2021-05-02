@@ -13,7 +13,7 @@ from mcdreforged.api.all import *
 PLUGIN_METADATA = {
 	'id': 'lite_file_manager',
 	'name': 'Lite File Manager',
-	'version': '1.1.0',
+	'version': '1.1.1',
 	'description': '一个轻量级的游戏内文件管理器',
 	'author': 'Fallen_Breath',
 	'link': 'https://github.com/MCDReforged/LiteFileManager',
