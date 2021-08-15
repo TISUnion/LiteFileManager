@@ -1,0 +1,63 @@
+lite_file_manager.help_message: |
+  --------- {name} v{version} ---------
+  {description}
+  §7{prefix}§r 显示此帮助信息
+  §7{prefix} reload§r 重新加载配置文件
+  §7{prefix} ls §6[<page>]§r 列出当前目录下的所有文件。可指定显示的页数
+  §7{prefix} search §a<keyword>§r §6[<page>]§r 列出当前目录下包含§a<keyword>§r的文件。可指定显示的页数
+  §7{prefix} pwd§r 显示当前所在的目录
+  §7{prefix} cd §a<path>§r 进入指定目录。目录可为相对路径，或以/开头的绝对路径
+  §7{prefix} delete §a<file_name>§r 删除当前目录下的指定文件。需要写入权限
+  §7{prefix} rename §a<file_name> <new_name>§r 重命名当前目录下的指定文件。需要写入权限
+  §7{prefix} export §a<file_name>§r 导出当前目录下的指定文件
+  §7{prefix} import §9<url> §a[<file_name>]§r 从给定url下载并导入文件至当前目录，可指定保存的文件名。需要写入权限
+  --- 示例 ---
+  §7{prefix} ls §61§r
+  §7{prefix} cd §astructures§r
+  §7{prefix} export §amy_struct.nbt§r
+  §7{prefix} import §9https://path.to.my/struct.nbt §anew_struct.nbt§r
+lite_file_manager.click_to_fill: '点击以填入 §7{0}§r'
+lite_file_manager.permission_denied: '权限不足'
+lite_file_manager.unknown_command: '未知指令，点击查看帮助'
+lite_file_manager.command_hint.keyword: '请输入关键字'
+lite_file_manager.command_hint.file_name: '请输入文件名'
+lite_file_manager.command_hint.url: '请输入URL'
+lite_file_manager.export.failed: '§a{0}§r导出失败: {1}'
+lite_file_manager.export.succeed: '§a{0}§r导出成功: '
+lite_file_manager.export.fill_chat: '点击以将链接填入聊天栏'
+lite_file_manager.export.open_url: '点击以打开链接'
+lite_file_manager.import.failed: '§a{0}§r导入失败: {1}'
+lite_file_manager.import.too_large: '§a{0}§r超过文件大小限制{1}，无法导入'
+lite_file_manager.import.succeed: '§a{0}§r导入成功，文件大小{1}'
+lite_file_manager.session.no_write_permission: '无文件写入权限'
+lite_file_manager.session.ls.file_size: '文件大小: {0}'
+lite_file_manager.session.ls.enter_dir: '点击以进入目录§e{0}§r'
+lite_file_manager.session.ls.enter_parent: '点击返回上一级目录'
+lite_file_manager.session.ls.delete: '删除文件§a{0}§r'
+lite_file_manager.session.ls.rename: '重命名文件§a{0}§r'
+lite_file_manager.session.ls.export: '导出文件§a{0}§r'
+lite_file_manager.session.ls.current_dir: '当前所在目录: '
+lite_file_manager.session.ls.search: '搜索文件'
+lite_file_manager.session.ls.import: '导入文件'
+lite_file_manager.session.ls.page.prev: '点击显示上一页'
+lite_file_manager.session.ls.page.next: '点击显示下一页'
+lite_file_manager.session.ls.page.footer: '第§6{0}§r/§6{1}§r页'
+lite_file_manager.session.ls.summary: '共有§6{0}§r个文件, §6{1}§r个文件夹'
+lite_file_manager.session.pwd.see_file: '§7[§r查看当前路径文件§7]§r'
+lite_file_manager.session.pwd.to_root: '§7[§r返回根目录§7]§r'
+lite_file_manager.session.cd.at_root: '不准在根目录返回上级'
+lite_file_manager.session.cd.unknown_mounted: '未知挂载文件夹§e{0}§r'
+lite_file_manager.session.cd.unknown_dir: '未知文件夹§e{0}§r'
+lite_file_manager.session.cd.enter: '正在进入路径§e{0}§r'
+lite_file_manager.session.cd.illegal_char: '输入路径含非法字符§c{0}§r'
+lite_file_manager.session.mani_file.error: '在操作文件§a{0}§r时出现错误: {1}'
+lite_file_manager.session.mani_file.not_found: '文件§a{0}§r不存在'
+lite_file_manager.session.delete: '已删除§a{0}§r'
+lite_file_manager.session.rename: '已将§a{0}§r重命名为§a{1}§r'
+lite_file_manager.session.export.wait: '请等待上一个文件完成导出'
+lite_file_manager.session.export.message: '正在导出§a{0}§r'
+lite_file_manager.session.import.at_root: '无法向根目录导入文件'
+lite_file_manager.session.import.wait: '请等待上一个文件完成导入'
+lite_file_manager.session.import.message.0: '正在由§9{0}§r导入文件中'
+lite_file_manager.session.import.message.1: '目标文件名: §a{0}§r'
+lite_file_manager.session.import.file_existed: '目标文件已存在'

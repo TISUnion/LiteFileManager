@@ -1,0 +1,63 @@
+lite_file_manager.help_message: |
+  --------- {name} v{version} ---------
+  {description}
+  §7{prefix}§r Show help
+  §7{prefix} reload§r Reload config
+  §7{prefix} ls §6[<page>]§r List all files in the current directory. The number of pages displayed can be specified
+  §7{prefix} search §a<keyword>§r §6[<page>]§r List files containing §a<keyword>§r in name in the current directory. The number of pages displayed can be specified
+  §7{prefix} pwd§r Display the current directory
+  §7{prefix} cd §a<path>§r Enter the specified directory. The directory can be a relative path or an absolute path starting with /
+  §7{prefix} delete §a<file_name>§r Delete the specified file in the current directory. Need write permission
+  §7{prefix} rename §a<file_name> <new_name>§r Rename the specified file in the current directory. Need write permission
+  §7{prefix} export §a<file_name>§r Export the specified file in the current directory
+  §7{prefix} import §9<url> §a[<file_name>]§r Download and import a file from the given url to the current directory. File name can be specified. Need write permission
+  --- Examples ---
+  §7{prefix} ls §61§r
+  §7{prefix} cd §astructures§r
+  §7{prefix} export §amy_struct.nbt§r
+  §7{prefix} import §9https://path.to.my/struct.nbt §anew_struct.nbt§r
+lite_file_manager.click_to_fill: 'Click to fill §7{0}§r'
+lite_file_manager.permission_denied: 'Permission denied'
+lite_file_manager.unknown_command: 'Unknown command, click me for help'
+lite_file_manager.command_hint.keyword: 'Please input keyword'
+lite_file_manager.command_hint.file_name: 'Please input file name'
+lite_file_manager.command_hint.url: 'Please input URL'
+lite_file_manager.export.failed: 'File §a{0}§r exported failed: {1}'
+lite_file_manager.export.succeed: 'File §a{0}§r exported successfully: '
+lite_file_manager.export.fill_chat: 'Click to fill the url into the chat bar'
+lite_file_manager.export.open_url: 'Click to open the url'
+lite_file_manager.import.failed: 'File §a{0}§r imported failed: {1}'
+lite_file_manager.import.too_large: 'File §a{0}§r exceeds the file size limit {1}, cannot be imported'
+lite_file_manager.import.succeed: 'File §a{0}§r imported successfully with size {1}'
+lite_file_manager.session.no_write_permission: 'No write permission'
+lite_file_manager.session.ls.file_size: 'File size: {0}'
+lite_file_manager.session.ls.enter_dir: 'Click to enter the directory §e{0}§r'
+lite_file_manager.session.ls.enter_parent: 'Click to return to the parent directory'
+lite_file_manager.session.ls.delete: 'Delete file §a{0}§r'
+lite_file_manager.session.ls.rename: 'Rename file §a{0}§r'
+lite_file_manager.session.ls.export: 'Export file §a{0}§r'
+lite_file_manager.session.ls.current_dir: 'Current directory: '
+lite_file_manager.session.ls.search: 'Search file'
+lite_file_manager.session.ls.import: 'Import file'
+lite_file_manager.session.ls.page.prev: 'Click to display the previous page'
+lite_file_manager.session.ls.page.next: 'Click to display the next page'
+lite_file_manager.session.ls.page.footer: 'Page §6{0}§r/§6{1}§r'
+lite_file_manager.session.ls.summary: 'There are §6{0}§r files, §6{1}§r folders'
+lite_file_manager.session.pwd.see_file: '§7[§rView files in the current directory§7]§r'
+lite_file_manager.session.pwd.to_root: '§7[§rReturn to the root directory§7]§r'
+lite_file_manager.session.cd.at_root: 'Stop entering parent directory at root'
+lite_file_manager.session.cd.unknown_mounted: 'Unknown mounted directory §e{0}§r'
+lite_file_manager.session.cd.unknown_dir: 'Unknown mounted directory §e{0}§r'
+lite_file_manager.session.cd.enter: 'Entering directory §e{0}§r'
+lite_file_manager.session.cd.illegal_char: 'Input path contains illegal character §c{0}§r'
+lite_file_manager.session.mani_file.error: 'An error occurred while operating the file §a{0}§r: {1}'
+lite_file_manager.session.mani_file.not_found: 'File §a{0}§r does not exist'
+lite_file_manager.session.delete: 'Deleted a{0}§r'
+lite_file_manager.session.rename: 'Renamed §a{0}§r to §a{1}§r'
+lite_file_manager.session.export.wait: 'Please wait for the previous file to finish exporting'
+lite_file_manager.session.export.message: 'Exporting §a{0}§r'
+lite_file_manager.session.import.at_root: 'Unable to import file to the root directory'
+lite_file_manager.session.import.wait: 'Please wait for the previous file to finish importing'
+lite_file_manager.session.import.message.0: 'Importing file from §9{0}§r'
+lite_file_manager.session.import.message.1: 'Target file name: §a{0}§r'
+lite_file_manager.session.import.file_existed: 'Target file already exists'
