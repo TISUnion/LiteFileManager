@@ -9,7 +9,7 @@ Lite File Manager
 
 ## 需求
 
-- [MCDR](https://github.com/Fallen-Breath/MCDReforged) >=1.5.0
+- [MCDR](https://github.com/Fallen-Breath/MCDReforged) >=2.0.0-beta.7
 
 ## 配置
 
