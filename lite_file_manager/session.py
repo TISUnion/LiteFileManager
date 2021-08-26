@@ -173,7 +173,7 @@ class Session:
 		))
 
 	def change_dir(self, input_path: str):
-		def jump_into(current_dir: str, path: str) -> Tuple[Optional[str], Optional[str]]:
+		def jump_into(current_dir: str, path: str) -> Tuple[Optional[str], Optional[RTextBase]]:
 			if self.__is_at_root(current_dir):
 				if path == self.DIR_TO_UPPER:
 					return None, tr('session.cd.at_root')
@@ -213,7 +213,7 @@ class Session:
 					if err is not None:
 						break
 		if err is not None:
-			self.msg(RText(err, RColor.red))
+			self.msg(err.set_color(RColor.red))
 		else:
 			self.current_dir = cwd  # type: str
 			self.list_file(None, 1)

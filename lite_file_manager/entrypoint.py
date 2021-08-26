@@ -72,16 +72,17 @@ def import_file(source: CommandSource, url: str, file_name: Optional[str]):
 def show_help(source: CommandSource):
 	help_msg_rtext = RTextList()
 	symbol = 0
-	help_messages = tr('help_message', prefix=constants.PREFIX, name=METADATA.name, version=METADATA.version, description=METADATA.get_description(source.get_server().get_mcdr_language())).strip()
-	for line in help_messages.splitlines(True):
-		result = re.search(r'(?<=§7)' + constants.PREFIX + r'[\S ]*?(?=§)', line)
-		if result is not None and symbol != 2:
-			help_msg_rtext.append(RText(line).c(RAction.suggest_command, result.group()).h(tr('click_to_fill', result.group())))
-			symbol = 1
-		else:
-			help_msg_rtext.append(line)
-			if symbol == 1:
-				symbol += 1
+	help_messages = tr('help_message', prefix=constants.PREFIX, name=METADATA.name, version=METADATA.version, description=METADATA.get_description(source.get_server().get_mcdr_language()))
+	with source.preferred_language_context():
+		for line in help_messages.to_plain_text().splitlines(True):
+			result = re.search(r'(?<=§7)' + constants.PREFIX + r'[\S ]*?(?=§)', line)
+			if result is not None and symbol != 2:
+				help_msg_rtext.append(RText(line).c(RAction.suggest_command, result.group()).h(tr('click_to_fill', result.group())))
+				symbol = 1
+			else:
+				help_msg_rtext.append(line)
+				if symbol == 1:
+					symbol += 1
 	source.reply(help_msg_rtext)
 
 
@@ -106,7 +107,8 @@ def on_load(server: PluginServerInterface, old_inst):
 def register_stuffs(server: PluginServerInterface):
 	server.register_command(
 		Literal(constants.PREFIX).
-		requires(lambda src: src.has_permission(common.config.permission_requirement), lambda: tr('permission_denied')).
+		requires(lambda src: src.has_permission(common.config.permission_requirement)).
+		on_error(RequirementNotMet, lambda src: src.replt(tr('permission_denied')), handled=True).
 		runs(show_help).
 		on_error(UnknownArgument, lambda src: src.reply(RText(tr('unknown_command')).h(constants.PREFIX).c(RAction.run_command, constants.PREFIX))).
 		then(
